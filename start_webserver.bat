@@ -6,7 +6,7 @@ REM Näytä koneen paikallinen IP-osoite (esim. 192.168.1.123)
 echo Your local IP addresses:
 ipconfig | findstr /i "IPv4"
 
-REM Käynnistä Pythonin HTTP-palvelin portissa 8008
+REM HTTP-palvelin portissa 8008
 echo Starting Python HTTP server at port 8008...
 python -m http.server 8008 --bind 0.0.0.0
 
