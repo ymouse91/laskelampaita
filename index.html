@@ -372,6 +372,14 @@ const BOARD_LAYOUT = [
     ['g','g','b','b','b'],
     ['g','g','b','g','g']
 ];
+const AREA_MAP = [
+    ['tl','tl','b','tr','tr'],
+    ['tl','tl','b','tr','tr'],
+    ['b','b','b','tr','tr'],
+    ['bl','bl','b','b','b'],
+    ['bl','bl','b','br','br']
+];
+
 
 let PUZZLES = [];
 let PUZZLE = null;
@@ -794,23 +802,26 @@ btn.onclick = () => {
 ---------------------------------------------------- */
 
 function countSheepByArea(){
-    const counts={tl:0,tr:0,bl:0,br:0};
+    const counts = { tl:0, tr:0, bl:0, br:0 };
 
-    for (let i=0;i<25;i++){
+    for (let i=0; i<25; i++){
         const item = gameState.board[i];
-        if (!item || item.value<=0) continue;
+        if (!item || item.value <= 0) continue;
 
-        const row=Math.floor(i/5);
-        const col=i%5;
+        const row = Math.floor(i / 5);
+        const col = i % 5;
 
-        if (BOARD_LAYOUT[row][col]==='b') continue;
+        const area = AREA_MAP[row][col];
 
-        const area = (row<2.5?'t':'b') + (col<2.5?'l':'r');
-        counts[area]+=item.value;
+        // Skipataan ruudut, jotka eivät kuulu mihinkään kulmaan (merkintä 'b')
+        if (area === 'b') continue;
+
+        counts[area] += item.value;
     }
 
     return counts;
 }
+
 
 function updateCorners(){
     const counts = countSheepByArea();
@@ -869,25 +880,52 @@ function removePiece() {
 
 
 function checkWin(){
+    // 1) Kerätään, mitkä palat ovat laudalla
     const used = new Set();
-    for (let i=0;i<25;i++){
+    for (let i = 0; i < 25; i++) {
         if (gameState.board[i]) used.add(gameState.board[i].id);
     }
 
-    if (used.size!==8) return;
+    // Jos ei vielä kaikkia paloja -> ei mitään viestiä
+    if (used.size !== 8) return;
 
-    const counts=countSheepByArea();
+    // 2) Lasketaan kulmien lampaat
+    const counts = countSheepByArea();
 
-    for (const a of ['tl','tr','bl','br']){
-        const target=PUZZLE.targets[a];
-        if (typeof target==='number' && counts[a]!==target){
-            return;
+    // 3) Tarkistetaan kulmat
+    let allGood = true;
+
+    for (const a of ['tl','tr','bl','br']) {
+        let target = PUZZLE.targets[a];
+
+        if (target == null) continue;     // ei tavoitetta
+        if (target === '?') continue;     // "?" = vapaa kulma
+
+        // Sallitut muodot: "5", "5B", "5?" jne. — poimitaan numerot
+        if (typeof target === 'string') {
+            const m = target.match(/\d+/);
+            if (!m) continue;
+            target = parseInt(m[0], 10);
+        }
+
+        if (counts[a] !== target) {
+            allGood = false;
         }
     }
 
+    // 4) Jos jotakin kulmaa ei täsmää
+    if (!allGood) {
+        updateStatus("❌ Ratkaisu ei ole oikein!");
+        document.getElementById('status').classList.remove('success');
+        return;
+    }
+
+    // 5) Muuten kulmat täsmäävät → pulma ratkaistu
     updateStatus("🎉 PULMA RATKAISTU! 🎉");
     document.getElementById('status').classList.add('success');
 }
+
+
 
 /* ----------------------------------------------------
    STATUS
