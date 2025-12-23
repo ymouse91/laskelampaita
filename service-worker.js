@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lampaat-v2';
+const CACHE_NAME = 'lampaat-v3';
 const FILES_TO_CACHE = [
   './',
   './index.html',
