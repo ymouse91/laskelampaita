@@ -217,6 +217,19 @@ button {
 button:hover { background: #45a049; }
 button.reset { background: #666; }
 
+select#difficultySelect{
+    flex: 1;
+    padding: 10px;
+    border: 2px solid #4CAF50;
+    border-radius: 4px;
+    background: white;
+    color: #222;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+
 /* --- STATUS --- */
 
 .status {
@@ -336,10 +349,16 @@ button.reset { background: #666; }
         <div class="pieces-container">
             <div class="piece-selector" id="pieceSelector"></div>
             <div class="controls">
-                <button onclick="rotatePiece()">🔄 Käännä</button>
-                <button onclick="removePiece()">🗑️ Poista</button>
                 <button class="reset" onclick="resetGame()">↻ Nollaa</button>
-                <button onclick="newPuzzle()">✨ Uusi pulma</button>
+
+                <select id="difficultySelect" title="Vaikeustaso">
+                    <option value="easy">Helppo</option>
+                    <option value="normal">Normaali</option>
+                    <option value="hard">Hankala</option>
+                    <option value="expert">Vaikea</option>
+                </select>
+
+                <button onclick="newPuzzle()">Uusi pulma</button>
             </div>
         </div>
     </div>
@@ -391,6 +410,24 @@ let gameState = {
     lockedPieces: new Set()
 };
 
+let lastTap = {
+    index: null,
+    time: 0
+};
+
+function isDoubleTap(cellIndex){
+    const now = Date.now();
+
+    if (lastTap.index === cellIndex && (now - lastTap.time) < 350) {
+        lastTap.index = null;
+        lastTap.time = 0;
+        return true;
+    }
+
+    lastTap.index = cellIndex;
+    lastTap.time = now;
+    return false;
+}
 
 /* ================================================================
    ––– CATS & BOXES -LOGIIKKA: "findPlacementForClick"
@@ -427,23 +464,51 @@ function findPlacementForClick(piece, clickRow, clickCol) {
    PUZZLE LOADING
 ---------------------------------------------------- */
 
+// --- Vaikeustaso ---
+let currentDifficulty = "easy"; // oletus: helppo
+let puzzlesLoaded = false;
+
+function getDifficultyRange(){
+    // PUZZLES on 0-indeksoitu, mutta UI näyttää 1..N
+    const n = PUZZLES.length;
+
+    if (currentDifficulty === "easy")   return { start: 0,  end: Math.min(11, n-1) };      // 1–12
+    if (currentDifficulty === "normal") return { start: 12, end: Math.min(23, n-1) };      // 13–24
+    if (currentDifficulty === "hard")   return { start: 24, end: Math.min(35, n-1) };      // 25–36
+    return { start: 36, end: n-1 };                                                        // 37 →
+}
+
+function pickRandomPuzzleIndex(){
+    const { start, end } = getDifficultyRange();
+    if (end < start) return 0; // varmistus, jos pulmia on vähemmän kuin odotetaan
+
+    let idx;
+    const rangeLen = end - start + 1;
+
+    if (window.lastPuzzleIndex === undefined || rangeLen <= 1){
+        idx = start + Math.floor(Math.random() * rangeLen);
+    } else {
+        do {
+            idx = start + Math.floor(Math.random() * rangeLen);
+        } while (idx === window.lastPuzzleIndex);
+    }
+    window.lastPuzzleIndex = idx;
+    return idx;
+}
+
+function applyRandomPuzzleFromDifficulty(){
+    const idx = pickRandomPuzzleIndex();
+    PUZZLE = PUZZLES[idx];
+    startPuzzle();
+}
+
 async function loadPuzzles() {
     try {
         const res = await fetch("counting_sheep_puzzles.json");
         PUZZLES = await res.json();
-
-        let idx;
-        if (window.lastPuzzleIndex === undefined) {
-            idx = Math.floor(Math.random() * PUZZLES.length);
-        } else {
-            do {
-                idx = Math.floor(Math.random() * PUZZLES.length);
-            } while (idx === window.lastPuzzleIndex && PUZZLES.length > 1);
-        }
-        window.lastPuzzleIndex = idx;
+        puzzlesLoaded = true;
         updateStatus("Pulmatiedosto ladattu!");
-        PUZZLE = PUZZLES[idx];
-        startPuzzle();
+        applyRandomPuzzleFromDifficulty();
     } catch (err) {
         console.error(err);
         updateStatus("Pulmatiedoston lataus epäonnistui!");
@@ -451,8 +516,13 @@ async function loadPuzzles() {
 }
 
 function newPuzzle() {
-    loadPuzzles();
+    if (!puzzlesLoaded) {
+        loadPuzzles();
+        return;
+    }
+    applyRandomPuzzleFromDifficulty();
 }
+
 
 /* ----------------------------------------------------
    PUZZLE INITIALISATION
@@ -549,10 +619,20 @@ function renderBoard() {
         cell.className = cls;
 
 cell.onclick = () => {
-    const item = gameState.board[row*5+col];
+    const idx = row*5 + col;
+    const item = gameState.board[idx];
+
+    // ✅ Kaksoiskosketus → poista pala
+if (item && isDoubleTap(idx)) {
+    // Poistetaan juuri se pala, jota kaksoisklikattiin
+    gameState.selectedPiece = item.id;
+    gameState.selectedRotation = 0; // palautuu alkuasentoon
+    removePiece();                  // käyttää jo olemassa olevaa poistolokia
+    return;
+}
 
     if (item) {
-        // ➜ BOARD CLICK: SELECT PIECE IN SIDEBAR
+        // ➜ Yksi kosketus: valitse pala sivupalkkiin
         gameState.selectedPiece = item.id;
         gameState.selectedRotation = 0;
         renderPieces();
@@ -560,9 +640,10 @@ cell.onclick = () => {
         return;
     }
 
-    // ➜ NORMAL BEHAVIOR: place selected piece
+    // ➜ Tyhjä ruutu: yritä asettaa valittu pala
     placeSelectedPiece(row, col);
 };
+
 
 
         if (gameState.board[i]) {
@@ -609,6 +690,14 @@ cell.onclick = () => {
    CATS & BOXES STYLE PLACEMENT
 ---------------------------------------------------- */
 
+function isPieceOnBoard(pieceId){
+    for (let i=0;i<25;i++){
+        if (gameState.board[i] && gameState.board[i].id === pieceId) return true;
+    }
+    return false;
+}
+
+
 function placeSelectedPiece(clickRow, clickCol){
     if (!gameState.selectedPiece){
         updateStatus("Valitse pala!");
@@ -620,6 +709,14 @@ function placeSelectedPiece(clickRow, clickCol){
         return;
     }
     // ⬆⬆⬆
+	
+    // ✅ UUSI: samaa palaa ei voi asettaa toista kertaa, jos se on jo laudalla
+    if (isPieceOnBoard(gameState.selectedPiece)) {
+        updateStatus("Tämä pala on jo laudalla (poista se ensin).");
+        return;
+    }
+
+	
     const pieceId = gameState.selectedPiece;
     const piece = rotatePieceNTimes(PIECES[pieceId], gameState.selectedRotation);
 
@@ -803,28 +900,33 @@ btn.onclick = () => {
 
 function countSheepByArea(){
     const counts = { tl:0, tr:0, bl:0, br:0 };
+    const hasGoat = { tl:false, tr:false, bl:false, br:false };
 
     for (let i=0; i<25; i++){
         const item = gameState.board[i];
-        if (!item || item.value <= 0) continue;
+        if (!item || item.value <= 0) continue; // lasketaan vain 1 ja 2
 
         const row = Math.floor(i / 5);
         const col = i % 5;
 
         const area = AREA_MAP[row][col];
-
-        // Skipataan ruudut, jotka eivät kuulu mihinkään kulmaan (merkintä 'b')
         if (area === 'b') continue;
 
         counts[area] += item.value;
+
+        // ✅ Vuohi = pala id 5, sen pitää olla siinä kulmassa jos targetissa on B
+        if (item.id === 5) {
+            hasGoat[area] = true;
+        }
     }
 
-    return counts;
+    return { counts, hasGoat };
 }
 
 
 function updateCorners(){
-    const counts = countSheepByArea();
+const { counts } = countSheepByArea();
+
     const areas = ['tl','tr','bl','br'];
 
     areas.forEach(a => {
@@ -886,11 +988,11 @@ function checkWin(){
         if (gameState.board[i]) used.add(gameState.board[i].id);
     }
 
-    // Jos ei vielä kaikkia paloja -> ei mitään viestiä
+    // ✅ Ensin: kaikkien 8 palan on oltava laudalla
     if (used.size !== 8) return;
 
-    // 2) Lasketaan kulmien lampaat
-    const counts = countSheepByArea();
+    // 2) Lasketaan kulmat + vuohen sijainti
+    const { counts, hasGoat } = countSheepByArea();
 
     // 3) Tarkistetaan kulmat
     let allGood = true;
@@ -898,10 +1000,12 @@ function checkWin(){
     for (const a of ['tl','tr','bl','br']) {
         let target = PUZZLE.targets[a];
 
-        if (target == null) continue;     // ei tavoitetta
-        if (target === '?') continue;     // "?" = vapaa kulma
+        if (target == null) continue;
+        if (target === '?') continue;
 
-        // Sallitut muodot: "5", "5B", "5?" jne. — poimitaan numerot
+        const needsGoat = (typeof target === 'string') && target.includes('B');
+
+        // poimitaan numero-osa
         if (typeof target === 'string') {
             const m = target.match(/\d+/);
             if (!m) continue;
@@ -911,19 +1015,23 @@ function checkWin(){
         if (counts[a] !== target) {
             allGood = false;
         }
+
+        // ✅ Vuohi pitää olla tässä kulmassa jos targetissa on B
+        if (needsGoat && !hasGoat[a]) {
+            allGood = false;
+        }
     }
 
-    // 4) Jos jotakin kulmaa ei täsmää
     if (!allGood) {
         updateStatus("❌ Ratkaisu ei ole oikein!");
         document.getElementById('status').classList.remove('success');
         return;
     }
 
-    // 5) Muuten kulmat täsmäävät → pulma ratkaistu
     updateStatus("🎉 PULMA RATKAISTU! 🎉");
     document.getElementById('status').classList.add('success');
 }
+
 
 
 
@@ -940,6 +1048,27 @@ function updateStatus(msg){
 /* ----------------------------------------------------
    INIT
 ---------------------------------------------------- */
+
+
+// --- Vaikeustason valinta (UI) ---
+(function initDifficultySelect(){
+    const sel = document.getElementById("difficultySelect");
+    if (!sel) return;
+
+    // oletus: helppo
+    sel.value = currentDifficulty;
+
+    sel.addEventListener("change", () => {
+        currentDifficulty = sel.value;
+
+        // Vaihdetaan tasoa → arvotaan heti uusi pulma valitusta haarukasta
+        if (puzzlesLoaded) {
+            applyRandomPuzzleFromDifficulty();
+        } else {
+            loadPuzzles(); // loadPuzzles() kutsuu lopuksi applyRandomPuzzleFromDifficulty()
+        }
+    });
+})();
 
 loadPuzzles();
 
