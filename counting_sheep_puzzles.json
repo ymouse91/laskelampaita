@@ -216,7 +216,7 @@
     "targets": {
       "tl": "3",
       "tr": "5",
-      "bl": "3B",
+      "bl": "3",
       "br": "2"
     },
     "prefilled": [
@@ -264,7 +264,7 @@
     "targets": {
       "tl": "4",
       "tr": "4",
-      "bl": "3",
+      "bl": "3B",
       "br": "2"
     },
     "prefilled": [
