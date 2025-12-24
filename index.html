@@ -34,6 +34,12 @@ body {
     min-height: 100vh;
 }
 
+html, body {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .game-title {
     font-size: clamp(20px, 5vw, 32px);
     font-weight: 900;
