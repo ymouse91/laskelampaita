@@ -1088,21 +1088,36 @@ if ('serviceWorker' in navigator) {
 }
 
 // Estä iPadOS/Safari double-tap zoom koko sivulla
-(function () {
+// Estä iPadOS double-tap zoom TAUSTALLA, mutta älä riko pelin klikkauksia
+(function(){
   let lastTouchEnd = 0;
 
-  document.addEventListener(
-    "touchend",
-    function (e) {
-      const now = Date.now();
-      if (now - lastTouchEnd <= 350) {
-        e.preventDefault(); // estää double-tap zoomin
+  document.addEventListener("touchend", function(e){
+    const now = Date.now();
+    const dt = now - lastTouchEnd;
+    lastTouchEnd = now;
+
+    // vain nopea tuplatap-ikkuna
+    if (dt > 0 && dt <= 350) {
+      const t = e.target;
+
+      // ✅ ÄLÄ estä oletusta pelin interaktiivisilla alueilla
+      // (muuten click/poisto ei toimi)
+      const insideInteractive =
+        t.closest("#gameBoard") ||          // pelilauta
+        t.closest(".piece-selector") ||     // miniatyyrivalikko
+        t.closest(".pieces-container") ||   // palapaneeli
+        t.closest("button") ||
+        t.closest("select") ||
+        t.closest("a");
+
+      if (!insideInteractive) {
+        e.preventDefault(); // estää zoomin vain “taustalla”
       }
-      lastTouchEnd = now;
-    },
-    { passive: false }
-  );
+    }
+  }, { passive: false });
 })();
+
 
 // Estä "pinch/gesture" -zoom pelisivulla (tarvittaessa)
 document.addEventListener("gesturestart", function (e) {
